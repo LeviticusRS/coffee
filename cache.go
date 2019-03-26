@@ -21,11 +21,12 @@ const (
 )
 
 type Cache struct {
-    blocks        *os.File
-    manifestIndex *os.File
-    indexes       []*os.File
-    mutex         sync.Mutex
-    buffer        [blockLength]byte
+    blocks         *os.File
+    manifestIndex  *os.File
+    packageIds     []uint8
+    packageIndexes []*os.File
+    mutex          sync.Mutex
+    buffer         [blockLength]byte
 }
 
 func OpenCache(root string) (*Cache, error) {
@@ -44,7 +45,8 @@ func OpenCache(root string) (*Cache, error) {
         return nil, err
     }
 
-    count := 0
+    packageIds := make([]uint8, 0)
+    maximumId := uint8(0)
     for _, file := range files {
         if file.IsDir() || !strings.Contains(file.Name(), ".idx") {
             continue
@@ -52,39 +54,44 @@ func OpenCache(root string) (*Cache, error) {
 
         suffix := file.Name()[strings.Index(file.Name(), ".idx")+4:]
 
-        id, err := strconv.Atoi(suffix)
+        n, err := strconv.ParseInt(suffix, 10, 8)
         if err != nil {
             return nil, err
         }
 
-        if id == ManifestPackage {
+        id := uint8(n)
+
+        if n == ManifestPackage {
             continue
         }
 
-        if id > count {
-            count = id + 1
+        packageIds = append(packageIds, id)
+
+        if id > maximumId {
+            maximumId = id + 1
         }
     }
 
-    indexes := make([]*os.File, count)
-    for i := 0; i < count; i++ {
-        index, err := os.Open(filepath.Join(root, fmt.Sprintf("main_file_cache.idx%d", i)))
+    indexes := make([]*os.File, maximumId+1)
+    for _, id := range packageIds {
+        index, err := os.Open(filepath.Join(root, fmt.Sprintf("main_file_cache.idx%d", id)))
         if err != nil {
             return nil, err
         }
-        indexes[i] = index
+        indexes[id] = index
     }
 
     return &Cache{
-        blocks:        blocks,
-        manifestIndex: manifestIndex,
-        indexes:       indexes,
-        mutex:         sync.Mutex{},
+        blocks:         blocks,
+        manifestIndex:  manifestIndex,
+        packageIds:     packageIds,
+        packageIndexes: indexes,
+        mutex:          sync.Mutex{},
     }, nil
 }
 
-func (c *Cache) PackageCount() int {
-    return len(c.indexes)
+func (c *Cache) PackageIds() []uint8 {
+    return c.packageIds
 }
 
 func (c *Cache) Get(pkg uint8, id uint16) ([]byte, error) {
@@ -169,11 +176,11 @@ func (c *Cache) getPackageIndex(pkg uint8) (*os.File, error) {
         return c.manifestIndex, nil
     }
 
-    if len(c.indexes) < int(pkg) {
+    if len(c.packageIndexes) < int(pkg) {
         return nil, fmt.Errorf("coffee: cache does not contain package - %d", pkg)
     }
 
-    return c.indexes[pkg], nil
+    return c.packageIndexes[pkg], nil
 }
 
 func fileLength(file *os.File) (int64, error) {
