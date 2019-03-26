@@ -2,16 +2,15 @@ package coffee
 
 import (
     "fmt"
+    "hash/crc32"
     "sort"
 )
 
 const (
-    NamedFlag = 0x1
-
+    NamedFlag     = 0x1
     MinimumFormat = 5
     MaximumFormat = 6
 )
-
 
 type GroupEntry struct {
     Files    map[uint16]*FileEntry
@@ -136,7 +135,7 @@ func DecodeManifest(b []byte) (*Manifest, error) {
         }
     }
 
-    if flags & NamedFlag != 0{
+    if flags&NamedFlag != 0 {
         for group := 0; group < len(ids); group++ {
             for child := 0; child < len(childIds[group]); child++ {
                 var name uint32
@@ -149,4 +148,41 @@ func DecodeManifest(b []byte) (*Manifest, error) {
     }
 
     return manifest, nil
+}
+
+
+// Creates the release manifest for a cache. The release manifest contains the checksum and version of each index
+// manifest contained within the cache. This is used so that the client can verify if the cache it has locally is the
+// same version as the one being distributed.
+func CreateReleaseManifest(cache *Cache) ([]byte, error) {
+    manifest := NewByteBuffer(cache.PackageCount() * 8)
+    for i := 0; i < cache.PackageCount(); i++ {
+        archive, err := cache.Get(ManifestPackage, uint16(i))
+        if err != nil {
+            return nil, err
+        }
+
+        _ = manifest.PutUint32(crc32.Checksum(archive, crc32.IEEETable))
+
+        b, err := DecompressArchive(archive)
+        if err != nil {
+            return nil, err
+        }
+
+        indexManifest := ByteBuffer{Bytes:b}
+
+        // Oldschool only supports manifest format 5 and 6.
+        format, _ := indexManifest.GetUint8()
+        if format < 5 || format > 6 {
+            return nil, fmt.Errorf("coffee: unsupported manifest format %d", format)
+        }
+
+        var version uint32
+        if format > 5 {
+            version, _ = indexManifest.GetUint32()
+        }
+
+        _ = manifest.PutUint32(version)
+    }
+    return manifest.Bytes, nil
 }

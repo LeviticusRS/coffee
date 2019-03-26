@@ -1,7 +1,6 @@
 package coffee
 
 import (
-    "errors"
     "fmt"
     "io"
     "io/ioutil"
@@ -11,10 +10,6 @@ import (
     "strconv"
     "strings"
     "sync"
-)
-
-const (
-    ManifestIndex = 255
 )
 
 const (
@@ -39,7 +34,7 @@ func OpenCache(root string) (*Cache, error) {
         return nil, err
     }
 
-    manifestIndex, err := os.Open(path.Join(root, fmt.Sprintf("main_file_cache.idx%d", ManifestIndex)))
+    manifestIndex, err := os.Open(path.Join(root, fmt.Sprintf("main_file_cache.idx%d", ManifestPackage)))
     if err != nil {
         return nil, err
     }
@@ -51,20 +46,18 @@ func OpenCache(root string) (*Cache, error) {
 
     count := 0
     for _, file := range files {
-        if file.IsDir() {
+        if file.IsDir() || !strings.Contains(file.Name(), ".idx") {
             continue
         }
 
-        if !strings.Contains(file.Name(), ".idx") {
-            continue
-        }
+        suffix := file.Name()[strings.Index(file.Name(), ".idx")+4:]
 
-        id, err := strconv.Atoi(file.Name()[strings.Index(file.Name(), ".idx")+4:])
+        id, err := strconv.Atoi(suffix)
         if err != nil {
             return nil, err
         }
 
-        if id == ManifestIndex {
+        if id == ManifestPackage {
             continue
         }
 
@@ -90,29 +83,29 @@ func OpenCache(root string) (*Cache, error) {
     }, nil
 }
 
-func (c *Cache) Length() int {
+func (c *Cache) PackageCount() int {
     return len(c.indexes)
 }
 
-func (c *Cache) Get(index, id int) ([]byte, error) {
+func (c *Cache) Get(pkg uint8, id uint16) ([]byte, error) {
     c.mutex.Lock()
     defer c.mutex.Unlock()
 
-    indexFile, err := c.getIndexFile(index)
+    index, err := c.getPackageIndex(pkg)
     if err != nil {
         return nil, err
     }
 
-    indexLength, err := fileLength(indexFile)
+    indexLength, err := fileLength(index)
     if err != nil {
         return nil, err
     }
 
     if indexLength < referenceLength+referenceLength*int64(id) {
-        return nil, errors.New("asset: archive does not exist")
+        return nil, fmt.Errorf("coffee: archive does not exist (package: %d, id: %d)", pkg, id)
     }
 
-    if _, err := indexFile.ReadAt(c.buffer[:referenceLength], int64(id)*referenceLength); err != nil {
+    if _, err := index.ReadAt(c.buffer[:referenceLength], int64(id)*referenceLength); err != nil {
         return nil, err
     }
 
@@ -128,14 +121,14 @@ func (c *Cache) Get(index, id int) ([]byte, error) {
         return nil, io.EOF
     }
 
-    result := make([]byte, length)
+    b := make([]byte, length)
 
     offset := uint32(0)
     part := uint16(0)
 
     for offset < length {
         if block == endOfArchive {
-            return nil, errors.New("asset: premature end of archive")
+            return nil, fmt.Errorf("coffee: premature end of archive (package: %d, archive: %d)", pkg, id)
         }
 
         read := length - offset
@@ -149,10 +142,10 @@ func (c *Cache) Get(index, id int) ([]byte, error) {
 
         blockArchiveId := uint16(c.buffer[0])<<8 | uint16(c.buffer[1])
         blockArchiveChunk := uint16(c.buffer[2])<<8 | uint16(c.buffer[3])
-        blockIndex := c.buffer[7]
+        blockPackage := c.buffer[7]
 
-        if blockArchiveId != uint16(id) || blockArchiveChunk != part || blockIndex != uint8(index) {
-            return nil, errors.New("asset: invalid block header")
+        if blockArchiveId != id || blockArchiveChunk != part || blockPackage != pkg {
+            return nil, fmt.Errorf("coffee: invalid block header (package: %d, archive: %d)", pkg, id)
         }
 
         nextBlock := uint32(c.buffer[4])<<16 | uint32(c.buffer[5])<<8 | uint32(c.buffer[6])
@@ -161,27 +154,26 @@ func (c *Cache) Get(index, id int) ([]byte, error) {
             return nil, io.EOF
         }
 
-        copy(result[offset:], c.buffer[blockHeaderLength:blockHeaderLength+read])
+        copy(b[offset:], c.buffer[blockHeaderLength:blockHeaderLength+read])
 
         block = nextBlock
         offset += read
         part++
     }
 
-    return result, nil
+    return b, nil
 }
 
-
-func (c *Cache) getIndexFile(index int) (*os.File, error) {
-    if index == ManifestIndex {
+func (c *Cache) getPackageIndex(pkg uint8) (*os.File, error) {
+    if pkg == ManifestPackage {
         return c.manifestIndex, nil
     }
 
-    if len(c.indexes) < int(index) {
-        return nil, fmt.Errorf("asset: cache does not contain index %d", index)
+    if len(c.indexes) < int(pkg) {
+        return nil, fmt.Errorf("coffee: cache does not contain package - %d", pkg)
     }
 
-    return c.indexes[index], nil
+    return c.indexes[pkg], nil
 }
 
 func fileLength(file *os.File) (int64, error) {

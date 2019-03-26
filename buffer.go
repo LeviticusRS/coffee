@@ -14,6 +14,10 @@ type ByteBuffer struct {
     Offset int
 }
 
+func NewByteBuffer(capacity int) ByteBuffer {
+    return ByteBuffer{Bytes: make([]byte, capacity)}
+}
+
 func (b *ByteBuffer) check(n int) error {
     if b.Offset+n > len(b.Bytes) {
         return fmt.Errorf(

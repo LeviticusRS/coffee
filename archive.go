@@ -10,13 +10,11 @@ import (
 )
 
 const (
-    UncompressedHeaderLength = 5
-    CompressedHeaderLength   = 9
+    uncompressedHeaderLength = 5
+    compressedHeaderLength   = 9
 )
 
-var (
-    bz2Header = []byte("BZh9")
-)
+var bz2Header = []byte("BZh9")
 
 type Compression uint8
 
@@ -30,13 +28,13 @@ func (c Compression) reader(b []byte) (io.Reader, error) {
     length := binary.BigEndian.Uint32(b[1:])
     switch c {
     case Uncompressed:
-        return bytes.NewReader(b[UncompressedHeaderLength : UncompressedHeaderLength+length]), nil
+        return bytes.NewReader(b[uncompressedHeaderLength : uncompressedHeaderLength+length]), nil
     case Bzip2:
         return bzip2.NewReader(
             bytes.NewReader(
-                append(bz2Header, b[CompressedHeaderLength:CompressedHeaderLength+length]...)), &bzip2.ReaderConfig{})
+                append(bz2Header, b[compressedHeaderLength:compressedHeaderLength+length]...)), &bzip2.ReaderConfig{})
     case Gzip:
-        return gzip.NewReader(bytes.NewReader(b[CompressedHeaderLength : CompressedHeaderLength+length]))
+        return gzip.NewReader(bytes.NewReader(b[compressedHeaderLength : compressedHeaderLength+length]))
     default:
         return nil, fmt.Errorf("asset: unsupported compression %d", c)
     }
@@ -48,7 +46,7 @@ func (c Compression) uncompressedLength(b []byte) (uint32, error) {
     case Uncompressed:
         return binary.BigEndian.Uint32(b[1:]), nil
     case Bzip2, Gzip:
-        return binary.BigEndian.Uint32(b[UncompressedHeaderLength:]), nil
+        return binary.BigEndian.Uint32(b[uncompressedHeaderLength:]), nil
     default:
         return 0, fmt.Errorf("asset: unsupported compression %d", c)
     }
@@ -75,7 +73,7 @@ func DecompressArchive(b []byte) ([]byte, error) {
 func CompressArchive(compression Compression, b []byte) ([]byte, error) {
     switch compression {
     case Uncompressed:
-        packed := make([]byte, UncompressedHeaderLength+len(b))
+        packed := make([]byte, uncompressedHeaderLength+len(b))
         buf := ByteBuffer{Bytes: packed}
         _ = buf.PutUint8(byte(compression))
         _ = buf.PutUint32(uint32(len(b)))
@@ -83,7 +81,7 @@ func CompressArchive(compression Compression, b []byte) ([]byte, error) {
         return packed, nil
     default:
         // TODO
-        return nil, fmt.Errorf("asset: unsupported compression %d", compression)
+        return nil, fmt.Errorf("coffee: unsupported archive compression - %d", compression)
     }
 }
 
@@ -94,11 +92,11 @@ func TrimArchive(b []byte) ([]byte, error) {
     length := binary.BigEndian.Uint32(b[1:])
     switch compression {
     case Uncompressed:
-        return b[:UncompressedHeaderLength+length], nil
+        return b[:uncompressedHeaderLength+length], nil
     case Bzip2, Gzip:
-        return b[:CompressedHeaderLength+length], nil
+        return b[:compressedHeaderLength+length], nil
     default:
-        return nil, fmt.Errorf("asset: unsupported compression %d", compression)
+        return nil, fmt.Errorf("coffee: unsupported archive compression %d", compression)
     }
 }
 
