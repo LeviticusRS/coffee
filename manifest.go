@@ -191,5 +191,5 @@ func CreateReleaseManifest(cache *Cache) ([]byte, error) {
         _ = manifest.PutUint32(crc32.Checksum(archive, crc32.IEEETable))
         _ = manifest.PutUint32(version)
     }
-    return manifest.Bytes[:], nil
+    return manifest.Bytes, nil
 }
