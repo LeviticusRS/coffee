@@ -150,18 +150,26 @@ func DecodeManifest(b []byte) (*Manifest, error) {
     return manifest, nil
 }
 
-// Creates the release manifest for a cache. The release manifest contains the checksum and version of each index
+// Creates the release manifest for a cache. The release manifest contains the checksum and version of each package
 // manifest contained within the cache. This is used so that the client can verify if the cache it has locally is the
 // same version as the one being distributed.
 func CreateReleaseManifest(cache *Cache) ([]byte, error) {
-    manifest := NewByteBuffer(cache.PackageCount() * 8)
-    for i := 0; i < cache.PackageCount(); i++ {
-        archive, err := cache.Get(ManifestPackage, uint16(i))
+    maximum := uint8(0)
+    for _, id := range cache.PackageIds() {
+        if id > maximum {
+            maximum = id
+        }
+    }
+
+    manifest := NewByteBuffer(int(maximum * 8))
+
+    for _, id := range cache.PackageIds() {
+        archive, err := cache.Get(ManifestPackage, uint16(id))
         if err != nil {
             return nil, err
         }
 
-        _ = manifest.PutUint32(crc32.Checksum(archive, crc32.IEEETable))
+        manifest.Offset = int(id * 8)
 
         b, err := DecompressArchive(archive)
         if err != nil {
@@ -170,10 +178,9 @@ func CreateReleaseManifest(cache *Cache) ([]byte, error) {
 
         indexManifest := ByteBuffer{Bytes:b}
 
-        // Oldschool only supports manifest format 5 and 6.
         format, _ := indexManifest.GetUint8()
         if format < 5 || format > 6 {
-            return nil, fmt.Errorf("coffee: unsupported manifest format %d", format)
+            return nil, fmt.Errorf("coffee: unsupported manifest format - %d", format)
         }
 
         var version uint32
@@ -181,7 +188,8 @@ func CreateReleaseManifest(cache *Cache) ([]byte, error) {
             version, _ = indexManifest.GetUint32()
         }
 
+        _ = manifest.PutUint32(crc32.Checksum(archive, crc32.IEEETable))
         _ = manifest.PutUint32(version)
     }
-    return manifest.Bytes, nil
+    return manifest.Bytes[:], nil
 }
