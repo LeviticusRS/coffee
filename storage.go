@@ -14,6 +14,8 @@ func NewStorage(cache *Cache) (*Storage, error) {
         archives:  make(map[uint8]map[uint16][]byte),
     }
 
+    storage.archives[ManifestPackage] = make(map[uint16][]byte)
+
     for _, id := range cache.PackageIds() {
         storage.archives[id] = make(map[uint16][]byte)
     }
