@@ -161,7 +161,7 @@ func CreateReleaseManifest(cache *Cache) ([]byte, error) {
         }
     }
 
-    manifest := NewByteBuffer(int(maximum * 8))
+    manifest := NewByteBuffer(int((maximum + 1) * 8))
 
     for _, id := range cache.PackageIds() {
         archive, err := cache.Get(ManifestPackage, uint16(id))
