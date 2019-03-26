@@ -24,7 +24,9 @@ func NewStorage(cache *Cache) (*Storage, error) {
     if err != nil {
         return nil, err
     }
-    storage.archives[ManifestPackage][255] = manifest
+
+    packed, _ := CompressArchive(Uncompressed, manifest)
+    storage.archives[ManifestPackage][255] = packed
 
     return &storage, nil
 }
