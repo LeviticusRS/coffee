@@ -150,7 +150,6 @@ func DecodeManifest(b []byte) (*Manifest, error) {
     return manifest, nil
 }
 
-
 // Creates the release manifest for a cache. The release manifest contains the checksum and version of each index
 // manifest contained within the cache. This is used so that the client can verify if the cache it has locally is the
 // same version as the one being distributed.
