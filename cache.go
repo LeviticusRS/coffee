@@ -54,7 +54,7 @@ func OpenCache(root string) (*Cache, error) {
 
         suffix := file.Name()[strings.Index(file.Name(), ".idx")+4:]
 
-        n, err := strconv.ParseInt(suffix, 10, 8)
+        n, err := strconv.ParseInt(suffix, 10, 16)
         if err != nil {
             return nil, err
         }
